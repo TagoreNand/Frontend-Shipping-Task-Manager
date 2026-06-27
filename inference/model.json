@@ -1,0 +1,50 @@
+{
+  "version": "2.0.0",
+  "trainedAt": "2026-06-26T19:10:44.778Z",
+  "classes": [
+    "backlog",
+    "in-progress",
+    "complete"
+  ],
+  "features": [
+    "nearness",
+    "critical",
+    "air",
+    "fromBacklog",
+    "fromInProgress",
+    "fromComplete"
+  ],
+  "weights": {
+    "backlog": {
+      "bias": -0.6426,
+      "nearness": -1.0334,
+      "critical": -2.4832,
+      "air": 0.1698,
+      "fromBacklog": 1.878,
+      "fromInProgress": -1.2873,
+      "fromComplete": -1.1228
+    },
+    "in-progress": {
+      "bias": 0.5613,
+      "nearness": 0.7675,
+      "critical": 1.7633,
+      "air": 0.0634,
+      "fromBacklog": -0.1575,
+      "fromInProgress": 2.2066,
+      "fromComplete": -1.585
+    },
+    "complete": {
+      "bias": 0.0813,
+      "nearness": 0.2659,
+      "critical": 0.7199,
+      "air": -0.2333,
+      "fromBacklog": -1.7205,
+      "fromInProgress": -0.9193,
+      "fromComplete": 2.7078
+    }
+  },
+  "metrics": {
+    "samples": 5000,
+    "accuracy": 0.939
+  }
+}

@@ -1,0 +1,100 @@
+# Full Shiptivitas stack: frontend + API + inference + Postgres + OTLP collector.
+# Run:  docker compose up --build
+#   app           http://localhost:8080
+#   api           http://localhost:4000   (Postgres-backed)
+#   inference     http://localhost:4100
+#   otel traces   http://localhost:4318   (printed by the collector)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: shiptivitas
+      POSTGRES_PASSWORD: shiptivitas
+      POSTGRES_DB: shiptivitas
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shiptivitas"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.60
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"   # Jaeger UI
+
+  otel-collector:
+    image: otel/opentelemetry-collector:0.110.0
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel/config.yaml:ro
+    depends_on:
+      - jaeger
+    ports:
+      - "4318:4318"
+      - "4317:4317"
+
+  inference:
+    build: ./inference
+    environment:
+      PORT: "4100"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_SERVICE_NAME: shiptivitas-inference
+      DEPLOYMENT_ENVIRONMENT: docker
+    depends_on:
+      - otel-collector
+    ports:
+      - "4100:4100"
+
+  server:
+    build: ./server
+    environment:
+      PORT: "4000"
+      API_TOKEN: dev-token
+      REFRESH_TOKEN: dev-refresh
+      AUTH_USER: dispatcher
+      AUTH_PASSWORD: dev-password
+      DATABASE_URL: postgres://shiptivitas:shiptivitas@postgres:5432/shiptivitas
+      REDIS_URL: redis://redis:6379
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_SERVICE_NAME: shiptivitas-server
+      DEPLOYMENT_ENVIRONMENT: docker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      otel-collector:
+        condition: service_started
+    ports:
+      - "4000:4000"
+
+  app:
+    build:
+      context: ./app
+      args:
+        VITE_USE_MOCK: "false"
+        VITE_API_BASE_URL: http://localhost:4000
+        VITE_WS_URL: ws://localhost:4000/realtime
+        VITE_TRIAGE_URL: http://localhost:4100
+        VITE_OTLP_URL: http://localhost:4318
+        VITE_DEPLOY_ENV: docker
+    depends_on:
+      - server
+      - inference
+    ports:
+      - "8080:80"
+
+volumes:
+  pgdata:

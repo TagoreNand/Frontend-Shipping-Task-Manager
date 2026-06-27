@@ -1,0 +1,17 @@
+# dependencies / build output
+**/node_modules/
+**/dist/
+**/coverage/
+**/playwright-report/
+**/test-results/
+
+# runtime data + local env
+**/data/
+.env
+.env.*
+!.env.example
+**/*.local
+
+# logs / os
+*.log
+.DS_Store
