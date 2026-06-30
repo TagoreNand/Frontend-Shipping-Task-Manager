@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getAuthToken, login, refreshAccessToken, useAuthStore } from './authStore';
+import { getAuthToken, login, signup, refreshAccessToken, useAuthStore } from './authStore';
 
 describe('authStore', () => {
   beforeEach(() => {
@@ -59,6 +59,29 @@ describe('login', () => {
     const result = await login('https://api.test', { username: 'x', password: 'y' });
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/invalid/i);
+  });
+});
+
+describe('signup', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('creates a customer session on success', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: true, json: async () => ({ accessToken: 'a', refreshToken: 'r', user: 'newcust', role: 'customer' }) })),
+    );
+    const result = await signup('https://api.test', { username: 'newcust', password: 'pw123456' });
+    expect(result.ok).toBe(true);
+    expect(useAuthStore.getState().role).toBe('customer');
+  });
+
+  it('reports a taken username (409)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 409, json: async () => ({}) })));
+    const result = await signup('https://api.test', { username: 'dup', password: 'pw123456' });
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatch(/taken/i);
   });
 });
 

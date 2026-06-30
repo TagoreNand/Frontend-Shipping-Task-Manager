@@ -18,6 +18,15 @@ describe('inference API', () => {
     expect(typeof res.body.suggestions[0].confidence).toBe('number');
   });
 
+  it('scores transaction risk', async () => {
+    const res = await request(app)
+      .post('/risk')
+      .send({ transactions: [{ id: 'x', amount: 90000, accountAgeDays: 2, mode: 'air', restrictedLane: true }] })
+      .expect(200);
+    expect(res.body.scores[0].id).toBe('x');
+    expect(res.body.scores[0].score).toBeGreaterThan(0.8);
+  });
+
   it('400s without a tasks array', async () => {
     await request(app).post('/triage').send({}).expect(400);
   });

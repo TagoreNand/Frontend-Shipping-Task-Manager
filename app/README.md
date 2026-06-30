@@ -18,7 +18,7 @@ README for `docker compose up`.
 | Data | mock ⇄ **HTTP backend**; AI triage via the inference service |
 | Realtime | reconnecting **WebSocket** (token-authed) |
 | Scale | **virtualized lanes** past a threshold |
-| Auth | **login + roles**, bearer token on HTTP/WS, **rotation + reuse-breach detection**, admin **users UI**, self-service **password change** |
+| Auth | **signup + login + roles** (customer / dispatcher / admin), token **rotation + reuse-breach detection**, admin **users / audit / risk** consoles, self-service **password change** |
 | Observability | optimistic-mutation tracing, **W3C `traceparent`** parent/child + **`baggage`** across app + API + inference, **OTLP export** (per-deploy attrs, **head sampling**, vendor **headers**) |
 | Tests | **Vitest + RTL + Playwright** (63 unit/component) |
 
@@ -66,6 +66,7 @@ VITE_DEPLOY_ENV=development
 
 ## Auth & observability
 
+- **Transactions & dual view:** each shipment shows a transaction (amount + customer status) and its `owner`. Customers self-**signup** and see **only the shipments they own**; the server **redacts** all ML risk fields from non-admin tokens, so a customer sees a clean status while admins get a **Risk** review queue (approve / block) fed by the rule engine (`high_value`, `new_account`, `restricted_lane`, plus `geo_risk` and `velocity`).
 - **Login + refresh:** in backend mode the board is gated by `AuthGate`/`LoginScreen`
   (demo: `dispatcher` / `dev-password`). `login()` calls `/auth/login`; tokens live in
   `authStore`. On a 401 `apiClient` runs a **single-flight** `refreshAccessToken()`

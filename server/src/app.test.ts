@@ -4,6 +4,8 @@ import { createApp } from './app';
 import { createTokenService } from './auth/tokenService';
 import { createMemoryTokenStore } from './auth/tokenStore';
 import { createMemoryAuditLog } from './audit/auditLog';
+import { assessTransactions } from './domain/risk';
+import { createLocalRiskScorer } from './risk/riskScorer';
 import { createMetrics } from './metrics/metrics';
 import { createInMemoryUserStore } from './auth/userStore';
 import type { OtlpExporter, SpanData } from './telemetry/otlp';
@@ -28,7 +30,7 @@ function memoryStore(initial: Task[]): TaskStore {
 async function setup(otlp?: OtlpExporter) {
   const events: RealtimeEvent[] = [];
   const hub: RealtimeHub = { add: () => {}, broadcast: (event) => events.push(event), size: () => 0 };
-  const store = memoryStore(createSeedTasks(new Date('2025-06-01T00:00:00.000Z')));
+  const store = memoryStore(await assessTransactions(createSeedTasks(new Date('2025-06-01T00:00:00.000Z')), createLocalRiskScorer()));
   const tokenStore = createMemoryTokenStore();
   const metrics = createMetrics();
   metrics.gauge('shiptivitas_tokens_active_access', 'active');
@@ -38,7 +40,7 @@ async function setup(otlp?: OtlpExporter) {
     return metrics.render();
   };
   const audit = createMemoryAuditLog();
-  const users = await createInMemoryUserStore([{ username: 'dispatcher', password: 'pw' }]);
+  const users = await createInMemoryUserStore([{ username: 'dispatcher', password: 'pw' }, { username: 'acme', password: 'pw', role: 'customer' }]);
   return { app: createApp({ store, hub, tokens, users, audit, otlp, metricsText }), events };
 }
 
@@ -51,6 +53,46 @@ describe('API', () => {
     const res = await request((await setup()).app).get('/tasks').set('Authorization', `Bearer ${TOKEN}`).expect(200);
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body.length).toBeGreaterThan(0);
+  });
+
+  it('exposes transaction risk to an admin', async () => {
+    const res = await request((await setup()).app).get('/tasks').set('Authorization', `Bearer ${TOKEN}`).expect(200);
+    const flagged = res.body.find((t: { transaction?: { risk?: { decision: string } } }) => t.transaction?.risk?.decision === 'block');
+    expect(flagged).toBeDefined();
+    expect(flagged.transaction.risk.reasons).toContain('high_value');
+  });
+
+  it('redacts transaction risk for a non-admin (customer)', async () => {
+    const { app } = await setup();
+    const login = await request(app).post('/auth/login').send({ username: 'dispatcher', password: 'pw' }).expect(200);
+    const res = await request(app).get('/tasks').set('Authorization', `Bearer ${login.body.accessToken}`).expect(200);
+    const withTxn = res.body.find((t: { transaction?: { risk?: unknown; amount?: number } }) => t.transaction);
+    expect(withTxn.transaction.risk).toBeUndefined();
+    expect(typeof withTxn.transaction.amount).toBe('number');
+  });
+
+  it('shows a customer only their own shipments', async () => {
+    const { app } = await setup();
+    const login = await request(app).post('/auth/login').send({ username: 'acme', password: 'pw' }).expect(200);
+    const res = await request(app).get('/tasks').set('Authorization', `Bearer ${login.body.accessToken}`).expect(200);
+    expect(res.body.length).toBe(3); // acme owns task-1, task-4, task-6 in the seed
+    expect(res.body.every((t: { owner?: string }) => t.owner === 'acme')).toBe(true);
+    expect(res.body.every((t: { transaction?: { risk?: unknown } }) => t.transaction?.risk === undefined)).toBe(true);
+  });
+
+  it('lets staff (dispatcher) see every shipment', async () => {
+    const { app } = await setup();
+    const login = await request(app).post('/auth/login').send({ username: 'dispatcher', password: 'pw' }).expect(200);
+    const res = await request(app).get('/tasks').set('Authorization', `Bearer ${login.body.accessToken}`).expect(200);
+    expect(res.body.length).toBe(10);
+  });
+
+  it('lets a customer move their own shipment but forbids moving another customer\'s', async () => {
+    const { app } = await setup();
+    const login = await request(app).post('/auth/login').send({ username: 'acme', password: 'pw' }).expect(200);
+    const auth = `Bearer ${login.body.accessToken}`;
+    await request(app).patch('/tasks/task-1/move').set('Authorization', auth).send({ toStatus: 'complete', toIndex: 0 }).expect(200);
+    await request(app).patch('/tasks/task-2/move').set('Authorization', auth).send({ toStatus: 'complete', toIndex: 0 }).expect(403);
   });
 
   it('moves a task and broadcasts the change', async () => {
@@ -85,6 +127,35 @@ describe('API', () => {
     const res = await request((await setup()).app).get('/health').set('x-trace-id', 'trace-123').expect(200);
     expect(res.headers['x-trace-id']).toBe('trace-123');
     expect(res.body.status).toBe('ok');
+  });
+
+  it('lets a new user sign up as a customer and auto-logs-in', async () => {
+    const { app } = await setup();
+    const res = await request(app).post('/auth/signup').send({ username: 'newcust', password: 'pw123456' }).expect(201);
+    expect(res.body.role).toBe('customer');
+    expect(typeof res.body.accessToken).toBe('string');
+    await request(app).post('/auth/signup').send({ username: 'newcust', password: 'pw123456' }).expect(409);
+  });
+
+  it('serves the risk review queue to admins and forbids others', async () => {
+    const { app } = await setup();
+    const queue = await request(app).get('/risk/queue').set('Authorization', `Bearer ${TOKEN}`).expect(200);
+    expect(queue.body.length).toBeGreaterThan(0);
+    expect(queue.body.every((t: { transaction: { risk: { reviewStatus: string } } }) => t.transaction.risk.reviewStatus === 'pending')).toBe(true);
+    const login = await request(app).post('/auth/login').send({ username: 'dispatcher', password: 'pw' }).expect(200);
+    await request(app).get('/risk/queue').set('Authorization', `Bearer ${login.body.accessToken}`).expect(403);
+  });
+
+  it('approves a flagged transaction (clears it + audits + leaves the queue)', async () => {
+    const { app } = await setup();
+    const admin = `Bearer ${TOKEN}`;
+    const queue = await request(app).get('/risk/queue').set('Authorization', admin).expect(200);
+    const taskId = queue.body[0].id;
+    const updated = await request(app).patch(`/risk/${taskId}`).set('Authorization', admin).send({ action: 'approve' }).expect(200);
+    expect(updated.body.transaction.risk.reviewStatus).toBe('approved');
+    expect(updated.body.transaction.customerStatus).toBe('cleared');
+    const after = await request(app).get('/risk/queue').set('Authorization', admin).expect(200);
+    expect(after.body.some((t: { id: string }) => t.id === taskId)).toBe(false);
   });
 
   it('exposes Prometheus token metrics', async () => {

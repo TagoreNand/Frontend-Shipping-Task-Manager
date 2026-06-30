@@ -1,6 +1,6 @@
 import express from 'express';
 import type { Express } from 'express';
-import { bearerAuth, requireRole } from './middleware/auth';
+import { bearerAuth, requireAuth, requireRole } from './middleware/auth';
 import { tracing } from './middleware/trace';
 import { authRouter } from './routes/auth';
 import { tasksRouter } from './routes/tasks';
@@ -8,6 +8,7 @@ import { triageRouter } from './routes/triage';
 import { usersRouter } from './routes/users';
 import { meRouter } from './routes/me';
 import { auditRouter } from './routes/audit';
+import { riskRouter } from './routes/risk';
 import type { AuditLog } from './audit/auditLog';
 import type { TokenService } from './auth/tokenService';
 import type { RealtimeHub } from './realtime/hub';
@@ -56,10 +57,11 @@ export function createApp({ store, hub, tokens, users, audit, otlp, metricsText 
   app.use('/auth', authRouter(tokens, users));
 
   const guard = bearerAuth(tokens);
-  app.use('/tasks', guard, tasksRouter(store, hub));
+  app.use('/tasks', requireAuth(tokens), tasksRouter(store, hub));
   app.use('/triage', guard, triageRouter());
   app.use('/users', requireRole(tokens, 'admin'), usersRouter(users, audit));
   app.use('/audit', requireRole(tokens, 'admin'), auditRouter(audit));
+  app.use('/risk', requireRole(tokens, 'admin'), riskRouter(store, hub, audit));
   app.use('/me', meRouter(tokens, users));
 
   return app;

@@ -33,8 +33,33 @@ export interface Task {
   updatedAt: string;
   /** Fractional index key — lexicographically sortable position within its lane. */
   order: string;
+  /** Customer (username) who owns this shipment; undefined = internal/unassigned. */
+  owner?: string;
   /** Optional AI triage recommendation (populated by the triage data source). */
   aiSuggestion?: TriageSuggestion;
+  /** Shipment transaction (amount + status; risk is admin-only). */
+  transaction?: Transaction;
+}
+
+export type TxnCustomerStatus = 'pending' | 'processing' | 'cleared' | 'failed';
+
+export interface TransactionRisk {
+  score: number;
+  decision: 'approve' | 'review' | 'block';
+  reasons: string[];
+  reviewStatus: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+}
+
+export interface Transaction {
+  id: string;
+  amount: number;
+  currency: string;
+  customerStatus: TxnCustomerStatus;
+  createdAt: string;
+  /** Present only for admins (the server redacts it for customers). */
+  risk?: TransactionRisk;
 }
 
 export type TasksByStatus = Record<TaskStatus, Task[]>;

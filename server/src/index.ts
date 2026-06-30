@@ -6,6 +6,8 @@ import { createTokenService } from './auth/tokenService';
 import { createMemoryTokenStore } from './auth/tokenStore';
 import { createMemoryAuditLog } from './audit/auditLog';
 import { createMetrics } from './metrics/metrics';
+import { createHttpRiskScorer, createLocalRiskScorer } from './risk/riskScorer';
+import { assessTransactions } from './domain/risk';
 import type { AuditLog } from './audit/auditLog';
 import type { TokenStore } from './auth/tokenStore';
 import { createOtlpExporter, parseHeaders } from './telemetry/otlp';
@@ -23,11 +25,22 @@ const AUTH_USER = process.env.AUTH_USER ?? 'dispatcher';
 const AUTH_PASSWORD = process.env.AUTH_PASSWORD ?? 'dev-password';
 const ADMIN_USER = process.env.ADMIN_USER ?? 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? 'admin-password';
+const DEMO_CUSTOMERS = (process.env.DEMO_CUSTOMERS ?? 'acme,globex')
+  .split(',')
+  .map((name) => name.trim())
+  .filter(Boolean);
+const DEMO_CUSTOMER_PASSWORD = process.env.DEMO_CUSTOMER_PASSWORD ?? 'customer-password';
 const DATA_FILE = process.env.DATA_FILE ?? path.join(process.cwd(), 'data', 'tasks.json');
 
 const seedUsers: SeedUser[] = [
   { username: AUTH_USER, password: AUTH_PASSWORD, role: 'dispatcher', displayName: 'Demo Dispatcher' },
   { username: ADMIN_USER, password: ADMIN_PASSWORD, role: 'admin', displayName: 'Administrator' },
+  ...DEMO_CUSTOMERS.map((username) => ({
+    username,
+    password: DEMO_CUSTOMER_PASSWORD,
+    role: 'customer',
+    displayName: `${username.charAt(0).toUpperCase()}${username.slice(1)} Corp`,
+  })),
 ];
 
 async function createStores(): Promise<{ store: TaskStore; users: UserStore; audit: AuditLog }> {
@@ -59,6 +72,10 @@ async function createTokenStore(): Promise<TokenStore> {
 
 async function main(): Promise<void> {
   const { store, users, audit } = await createStores();
+  const riskScorer = process.env.RISK_URL ? createHttpRiskScorer(process.env.RISK_URL) : createLocalRiskScorer();
+  const assessed = await assessTransactions(await store.read(), riskScorer);
+  await store.mutate(() => assessed);
+  log('info', 'risk.assessed', { transactions: assessed.filter((t) => t.transaction?.risk).length });
   const hub = createRealtimeHub();
   const metrics = createMetrics();
   metrics.gauge('shiptivitas_tokens_active_access', 'Active access tokens');

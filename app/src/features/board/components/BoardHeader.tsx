@@ -4,6 +4,7 @@ import { requiresAuth, useAuthStore } from '@/features/auth/authStore';
 import { UsersAdmin } from '@/features/users/UsersAdmin';
 import { AccountPanel } from '@/features/account/AccountPanel';
 import { AuditPanel } from '@/features/audit/AuditPanel';
+import { RiskQueue } from '@/features/risk/RiskQueue';
 import { useBoardRealtime } from '../hooks/useBoardRealtime';
 import type { ConnectionStatus } from '../hooks/useBoardRealtime';
 
@@ -25,6 +26,7 @@ export function BoardHeader() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
+  const [riskOpen, setRiskOpen] = useState(false);
 
   return (
     <header className="flex flex-wrap items-end justify-between gap-3">
@@ -56,6 +58,11 @@ export function BoardHeader() {
             Audit
           </button>
         )}
+        {requiresAuth && role === 'admin' && (
+          <button type="button" onClick={() => setRiskOpen(true)} className={pill}>
+            Risk
+          </button>
+        )}
         {requiresAuth && user && (
           <button type="button" onClick={() => setAccountOpen(true)} className={pill}>
             Account
@@ -70,6 +77,7 @@ export function BoardHeader() {
       {adminOpen && <UsersAdmin onClose={() => setAdminOpen(false)} />}
       {accountOpen && <AccountPanel onClose={() => setAccountOpen(false)} />}
       {auditOpen && <AuditPanel onClose={() => setAuditOpen(false)} />}
+      {riskOpen && <RiskQueue onClose={() => setRiskOpen(false)} />}
     </header>
   );
 }

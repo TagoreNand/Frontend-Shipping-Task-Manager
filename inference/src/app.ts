@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import express from 'express';
 import type { Express } from 'express';
 import { scoreBatch } from './model/scorer';
+import { scoreRiskBatch } from './risk/riskModel';
+import type { RiskInputTxn } from './risk/riskModel';
 import type { ModelArtifact, TriageInputTask } from './model/types';
 import type { OtlpExporter } from './telemetry/otlp';
 import { shouldSample } from './telemetry/sampler';
@@ -68,6 +70,15 @@ export function createApp(model: ModelArtifact, otlp?: OtlpExporter): Express {
       return;
     }
     res.json({ suggestions: scoreBatch(model, body.tasks as TriageInputTask[]) });
+  });
+
+  app.post('/risk', (req, res) => {
+    const body = req.body as { transactions?: unknown };
+    if (!Array.isArray(body.transactions)) {
+      res.status(400).json({ error: 'transactions[] required' });
+      return;
+    }
+    res.json({ scores: scoreRiskBatch(body.transactions as RiskInputTxn[]) });
   });
 
   return app;

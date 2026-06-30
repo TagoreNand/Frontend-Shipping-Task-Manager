@@ -67,6 +67,7 @@ services:
       AUTH_PASSWORD: dev-password
       DATABASE_URL: postgres://shiptivitas:shiptivitas@postgres:5432/shiptivitas
       REDIS_URL: redis://redis:6379
+      RISK_URL: http://inference:4100
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_SERVICE_NAME: shiptivitas-server
       DEPLOYMENT_ENVIRONMENT: docker
@@ -74,6 +75,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_started
+      inference:
         condition: service_started
       otel-collector:
         condition: service_started

@@ -21,6 +21,26 @@ export function authRouter(tokens: TokenService, users: UserStore): Router {
     res.json({ ...session, user: user.username, role: user.role, displayName: user.displayName });
   });
 
+  router.post('/signup', async (req, res) => {
+    const body = req.body as { username?: unknown; password?: unknown; displayName?: unknown };
+    if (typeof body.username !== 'string' || typeof body.password !== 'string' || body.password.length < 6) {
+      res.status(400).json({ error: 'username and password (min 6 chars) required' });
+      return;
+    }
+    try {
+      const user = await users.create({
+        username: body.username,
+        password: body.password,
+        role: 'customer',
+        displayName: typeof body.displayName === 'string' ? body.displayName : undefined,
+      });
+      const session = await tokens.issueSession({ username: user.username, role: user.role });
+      res.status(201).json({ ...session, user: user.username, role: user.role, displayName: user.displayName });
+    } catch {
+      res.status(409).json({ error: 'username taken' });
+    }
+  });
+
   router.post('/refresh', async (req, res) => {
     const body = req.body as { refreshToken?: unknown };
     if (typeof body.refreshToken !== 'string') {

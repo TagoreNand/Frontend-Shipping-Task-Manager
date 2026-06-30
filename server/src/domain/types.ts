@@ -15,6 +15,34 @@ export interface Task {
   etaAt: string;
   updatedAt: string;
   order: string;
+  /** Customer (username) who owns this shipment; undefined = internal/unassigned. */
+  owner?: string;
+  transaction?: Transaction;
+}
+
+export type TxnCustomerStatus = 'pending' | 'processing' | 'cleared' | 'failed';
+export type RiskDecision = 'approve' | 'review' | 'block';
+export type ReviewStatus = 'auto' | 'pending' | 'approved' | 'blocked';
+
+/** Internal risk assessment — redacted from non-admin (customer) views. */
+export interface TransactionRisk {
+  score: number;
+  decision: RiskDecision;
+  reasons: string[];
+  reviewStatus: ReviewStatus;
+  reviewedBy?: string;
+  reviewedAt?: string;
+}
+
+export interface Transaction {
+  id: string;
+  amount: number;
+  currency: string;
+  accountAgeDays: number;
+  restrictedLane: boolean;
+  customerStatus: TxnCustomerStatus;
+  createdAt: string;
+  risk?: TransactionRisk;
 }
 
 export interface MoveTaskInput {

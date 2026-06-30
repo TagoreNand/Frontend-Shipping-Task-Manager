@@ -164,6 +164,49 @@ The model is a *real artifact*: weights are trained by `inference/scripts/train.
 
 ---
 
+## Transaction risk & the dual view
+
+Every shipment carries a **transaction**. A risk engine combines deterministic
+business rules with an ML risk score (from the inference service) into an
+**approve / review / block** decision — and the platform shows a different
+picture to each audience: the **customer sees a clean status**, while the **back
+office sees the full risk and a review queue**.
+
+```mermaid
+flowchart TD
+  TXN["shipment transaction<br/>amount · account age · lane · owner"] --> RULES["business rules<br/>high_value · new_account · restricted_lane<br/>geo_risk · velocity"]
+  TXN --> ML["inference /risk<br/>ML risk score 0..1"]
+  RULES --> DEC{decision}
+  ML --> DEC
+  DEC -->|approve| CLEAR["customerStatus: Cleared"]
+  DEC -->|review / block| HOLD["held → customerStatus: Processing<br/>(reason hidden from the customer)"]
+  HOLD --> QUEUE["back-office risk queue (admin)"]
+  QUEUE -->|approve| CLEAR
+  QUEUE -->|block| FAIL["customerStatus: Failed"]
+```
+
+| | Customer view | Back-office (admin) view |
+|---|---|---|
+| **Shipments shown** | only your own | every shipment |
+| **Status** | Pending / Processing / Cleared / Failed | same |
+| **Amount** | visible | visible |
+| **ML risk score** | hidden | visible |
+| **Fired rules / reason** | hidden | visible |
+| **Decision + review queue** | hidden | visible, with Approve / Block |
+
+Three roles see three pictures, all enforced **server-side** in `GET /tasks`:
+a **customer** sees only the shipments they own with risk fields stripped; a
+**dispatcher** (ops) sees every shipment but no risk internals; an **admin** sees
+every shipment plus the full risk and the review queue. Ownership is checked on
+mutations too — a customer can only move their own shipments (`403` otherwise).
+
+The rule set spans the transaction itself (`high_value`, `new_account`,
+`restricted_lane`) and richer behavioural / geographic signals: **`geo_risk`**
+(origin or destination on the enhanced due-diligence list) and **`velocity`** (an
+owner exceeding a rolling 24-hour shipment threshold). Customers self-**signup**
+(role `customer`); the back office reviews flagged transactions from the admin
+**Risk** panel.
+
 ## Distributed tracing
 
 ```mermaid

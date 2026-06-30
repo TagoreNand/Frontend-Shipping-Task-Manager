@@ -70,6 +70,27 @@ export async function login(baseUrl: string, credentials: { username: string; pa
   }
 }
 
+/** Self-service signup (creates a customer account and logs in). */
+export async function signup(
+  baseUrl: string,
+  credentials: { username: string; password: string; displayName?: string },
+): Promise<LoginResult> {
+  try {
+    const response = await fetch(`${baseUrl}/auth/signup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(credentials),
+    });
+    if (!response.ok) {
+      return { ok: false, error: response.status === 409 ? 'That username is taken.' : 'Sign-up failed (password needs 6+ chars).' };
+    }
+    useAuthStore.getState().setSession((await response.json()) as Session);
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'Network error — is the server running?' };
+  }
+}
+
 let inflightRefresh: Promise<string | null> | null = null;
 
 /** Single-flight access-token refresh; stores the rotated refresh token too. */

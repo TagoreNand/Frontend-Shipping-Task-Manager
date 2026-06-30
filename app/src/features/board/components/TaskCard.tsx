@@ -8,6 +8,21 @@ import type { Task } from '../types';
 
 export const cardClassName = 'rounded-lg border border-slate-200 bg-white p-3 shadow-sm';
 
+const TXN_STATUS: Record<string, string> = {
+  pending: 'bg-slate-100 text-slate-600',
+  processing: 'bg-amber-100 text-amber-700',
+  cleared: 'bg-green-100 text-green-700',
+  failed: 'bg-red-100 text-red-700',
+};
+const RISK_DECISION: Record<string, { label: string; cls: string }> = {
+  approve: { label: 'Approved', cls: 'bg-green-50 text-green-700' },
+  review: { label: 'Review', cls: 'bg-amber-50 text-amber-700' },
+  block: { label: 'Blocked', cls: 'bg-red-50 text-red-700' },
+};
+function formatMoney(amount: number, currency: string): string {
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 0 }).format(amount);
+}
+
 function formatEta(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
@@ -32,7 +47,14 @@ function TaskCardFaceComponent({ task }: { task: Task }) {
           {priority.label}
         </span>
       </div>
-      <h3 className="mt-1 text-sm font-semibold text-slate-800">{task.title}</h3>
+      <div className="mt-1 flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-slate-800">{task.title}</h3>
+        {task.owner && (
+          <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500" title="Shipment owner">
+            {task.owner}
+          </span>
+        )}
+      </div>
       <p className="mt-1 line-clamp-2 text-xs text-slate-500">{task.description}</p>
       <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
         <span className="inline-flex items-center gap-1">
@@ -49,6 +71,24 @@ function TaskCardFaceComponent({ task }: { task: Task }) {
           <span className="font-semibold">AI</span>
           <span aria-hidden>▸</span>
           <span>Move to {laneTitle(suggestion.recommendedStatus)}</span>
+        </div>
+      )}
+      {task.transaction && (
+        <div className="mt-2 flex items-center justify-between border-t border-slate-100 pt-2 text-[11px]">
+          <span className="font-mono text-slate-600">{formatMoney(task.transaction.amount, task.transaction.currency)}</span>
+          <span className={clsx('rounded px-1.5 py-0.5 font-semibold uppercase tracking-wide', TXN_STATUS[task.transaction.customerStatus] ?? TXN_STATUS.pending)}>
+            {task.transaction.customerStatus}
+          </span>
+        </div>
+      )}
+      {task.transaction?.risk && (
+        <div
+          className={clsx('mt-1 flex items-center gap-1 rounded-md px-2 py-1 text-[11px]', RISK_DECISION[task.transaction.risk.decision]?.cls)}
+          title={`rules: ${task.transaction.risk.reasons.join(', ') || 'none'} · ML ${Math.round(task.transaction.risk.score * 100)}%`}
+        >
+          <span className="font-semibold">RISK</span>
+          <span>{RISK_DECISION[task.transaction.risk.decision]?.label}</span>
+          <span className="ml-auto font-mono">{Math.round(task.transaction.risk.score * 100)}%</span>
         </div>
       )}
     </>
